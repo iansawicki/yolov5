@@ -307,6 +307,7 @@ class DetectMultiBackend(nn.Module):
     # YOLOv5 MultiBackend class for python inference on various backends
     def __init__(self,
                  weights='yolov5s.pt',
+                 model_name=None,
                  device=torch.device('cpu'),
                  dnn=False,
                  data=None,
@@ -344,7 +345,10 @@ class DetectMultiBackend(nn.Module):
             from os import path
 
             from utils.triton import TritonRemoteModel
-            model_name = path.splitext(path.basename(w))[0]
+            if not model_name:
+                # Default is to derive model name from weights.pt
+                model_name = path.splitext(path.basename(w))[0]
+
             model = TritonRemoteModel(url=triton_url, model_name=model_name)
             nhwc = model.runtime.startswith("tensorflow")
         elif pt:  # PyTorch

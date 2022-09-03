@@ -1,0 +1,5 @@
+spec:
+  template:
+    spec:
+      nodeSelector:
+        node.kubernetes.io/instance-type: c7g.4xlarge
