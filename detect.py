@@ -45,6 +45,7 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
                            increment_path, non_max_suppression, print_args, scale_coords, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
+from numpy import asarray
 
 
 @smart_inference_mode()
@@ -53,6 +54,7 @@ def run(
         source=ROOT / 'data/images',  # file/dir/URL/glob, 0 for webcam
         data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
         triton_url=None,  # url to a remote Triton inference server
+        bsize=None, # set batch size to pool streaming dataset
         model_name=None, # optional model renaming for Triton inference server
         imgsz=(640, 640),  # inference size (height, width)
         conf_thres=0.25,  # confidence threshold
@@ -101,16 +103,24 @@ def run(
         view_img = check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt)
-        bs = len(dataset)  # batch_size
+        bs = bsize if bsize else len(dataset)  # batch_size
     else:
         dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
         bs = 1  # batch_size
     vid_path, vid_writer = [None] * bs, [None] * bs
 
     # Run inference
-    model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
+    #model.warmup(imgsz=(1 if pt else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:
+        # Added batching for streaming dataset
+        if bsize>1:
+            print("BSIZE FOUND")
+            imgl =[]
+            while len(imgl)<bs:
+                imgl.append(im[0])
+            im = asarray(imgl).astype("float32")
+
         with dt[0]:
             im = torch.from_numpy(im).to(device)
             im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
@@ -134,6 +144,7 @@ def run(
         for i, det in enumerate(pred):  # per image
             seen += 1
             if webcam:  # batch_size >= 1
+                i = 0 if bsize else i #Hack to make it play through with batch size.
                 p, im0, frame = path[i], im0s[i].copy(), dataset.count
                 s += f'{i}: '
             else:
@@ -219,6 +230,7 @@ def parse_opt():
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
     parser.add_argument('--triton-url', type=str, default=None, help="(optional) url to a Triton Inference Server")
     parser.add_argument('--model-name', type=str, default=None, help="(optional) rename model for Triton Inference Server")
+    parser.add_argument('--bsize', type=int, default=1, help="(optional) batch streaming dataset results")
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
