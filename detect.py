@@ -32,6 +32,7 @@ from pathlib import Path
 
 import torch
 import torch.backends.cudnn as cudnn
+import json
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
@@ -46,6 +47,7 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 from numpy import asarray
+from utils.cli_demo import im_enc
 
 
 @smart_inference_mode()
@@ -54,7 +56,8 @@ def run(
         source=ROOT / 'data/images',  # file/dir/URL/glob, 0 for webcam
         data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
         triton_url=None,  # url to a remote Triton inference server
-        bsize=None, # set batch size to pool streaming dataset
+        bsize=1, # set batch size to pool streaming dataset
+        show_in_browser=False, # Show video stream in browser instead of with python using 'imshow'
         model_name=None, # optional model renaming for Triton inference server
         imgsz=(640, 640),  # inference size (height, width)
         conf_thres=0.25,  # confidence threshold
@@ -100,7 +103,7 @@ def run(
 
     # Dataloader
     if webcam:
-        view_img = check_imshow()
+        view_img = False #check_imshow()
         cudnn.benchmark = True  # set True to speed up constant image size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=pt)
         bs = bsize if bsize else len(dataset)  # batch_size
@@ -183,13 +186,22 @@ def run(
 
             # Stream results
             im0 = annotator.result()
-            if view_img:
+            if view_img and not show_in_browser:
                 if platform.system() == 'Linux' and p not in windows:
                     windows.append(p)
                     cv2.namedWindow(str(p), cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)  # allow window resize (Linux)
                     cv2.resizeWindow(str(p), im0.shape[1], im0.shape[0])
                 cv2.imshow(str(p), im0)
                 cv2.waitKey(1)  # 1 millisecond
+
+            # Return to stream to browser window
+            if show_in_browser:
+                print("Writing to browser")
+                enc_img = cv2.imencode('.png', im0)[1].tostring()
+                yield(b'--frame\r\n'
+                      b'Content-Type: image/png]\r\n\r\n' + enc_img + b'\r\n')
+      
+
 
             # Save results (image with detections)
             if save_img:
@@ -254,6 +266,7 @@ def parse_opt():
     parser.add_argument('--hide-conf', default=False, action='store_true', help='hide confidences')
     parser.add_argument('--half', action='store_true', help='use FP16 half-precision inference')
     parser.add_argument('--dnn', action='store_true', help='use OpenCV DNN for ONNX inference')
+    parser.add_argument('--show-in-browser', action='store_true', help="Show video stream in browser (flask)")
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
     print_args(vars(opt))
