@@ -32,7 +32,6 @@ from pathlib import Path
 
 import torch
 import torch.backends.cudnn as cudnn
-import json
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # YOLOv5 root directory
